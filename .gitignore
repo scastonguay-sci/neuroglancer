@@ -1,3 +1,5 @@
 client/mesh_stats.json
 client/mesh_stats.json.gz
 client/stats/*.json.gz
+client/mesh_stats.json
+client/mesh_stats.json.gz
