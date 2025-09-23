@@ -1,15 +1,25 @@
-<!doctype html><meta charset="utf-8">
-<title>Neuroglancer</title>
+<!doctype html>
+<meta charset="utf-8" />
+<title>Neuroglancer – seg preset</title>
 <script>
-  // Your segmentation source (works if the bucket/objects are public).
-  const segUrl = "precomputed://gs://zetta-katz-sea-slug-seg/ng/seg/whole-pt1-v1-250512";
+  // Your desired initial state (add more layers if you want)
+  const state = {
+    layers: [
+      {
+        type: "segmentation",
+        name: "seg",
+        source: "precomputed://gs://zetta-katz-sea-slug-seg/ng/seg/whole-pt1-v1-250512"
+      }
+    ]
+  };
 
-  // Minimal state: one segmentation layer named "seg".
-  const state = encodeURIComponent(JSON.stringify({
-    layers: [{ type: "segmentation", name: "seg", source: segUrl }]
-  }));
+  // Build the correct /client/ base for GitHub Pages repo sites.
+  // If you ever serve this from the repo root locally, this still works.
+  const path = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
+  const toClient = path.endsWith('/client/') ? path : path + 'client/';
 
-  // Your client lives under /neuroglancer/client/ on GitHub Pages.
-  location.replace(`/neuroglancer/client/#!${state}`);
+  // Send the viewer to /client/#!<encoded JSON state>
+  const url = toClient + '#!' + encodeURIComponent(JSON.stringify(state));
+  location.replace(url);
 </script>
-<noscript>Open <a href="/neuroglancer/client/">client</a></noscript>
+<p>Redirecting…</p>
