@@ -1,9 +1,15 @@
 <!doctype html><meta charset="utf-8">
 <title>Neuroglancer</title>
 <script>
-  // Force a clean redirect that preserves the fragment
-  location.replace("/neuroglancer/client/#!%7B%22layers%22%3A%20%5B%7B%22type%22%3A%20%22segmentation%22%2C%20%22name%22%3A%20%22seg%22%2C%20%22source%22%3A%20%22precomputed%3A%2F%2Fhttps%3A%2F%2Fstorage.googleapis.com%2Fzetta-katz-sea-slug-drop%2Fseg%22%7D%5D%7D");
+  // Your segmentation source (works if the bucket/objects are public).
+  const segUrl = "precomputed://gs://zetta-katz-sea-slug-seg/ng/seg/whole-pt1-v1-250512";
+
+  // Minimal state: one segmentation layer named "seg".
+  const state = encodeURIComponent(JSON.stringify({
+    layers: [{ type: "segmentation", name: "seg", source: segUrl }]
+  }));
+
+  // Your client lives under /neuroglancer/client/ on GitHub Pages.
+  location.replace(`/neuroglancer/client/#!${state}`);
 </script>
-<noscript>
-  Redirecting… <a href="/neuroglancer/client/">open manually</a>
-</noscript>
+<noscript>Open <a href="/neuroglancer/client/">client</a></noscript>
