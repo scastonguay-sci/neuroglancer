@@ -15,7 +15,77 @@
  */
 
 import "#src/ui/tool_palette.css";
+class ToolQueryWidget extends RefCounted {
+  element = document.createElement("div");
+  errorsElement = document.createElement("ul");
+  constructor(public state: ToolPaletteState) {
+    super();
+    const textInput = this.registerDisposer(new AutocompleteTextInput({
+      completer: this.completeQuery.bind(this),
+    }));
+    textInput.placeholder = "Enter tool query or drag in tools";
+    textInput.element.classList.add("neuroglancer-tool-palette-query");
+    textInput.value = state.query.value ?? "";
 
+    this.registerDisposer(
+      state.parsedQuery.changed.add(
+        this.registerCancellable(debounce(() => this.updateErrors(), 200)),
+      ),
+    );
+    this.updateErrors();
+    textInput.onCommit.add(() => {
+      state.query.value = textInput.value;
+    });
+    state.query.changed.add(() => {
+      textInput.value = state.query.value ?? "";
+    });
+    const { element, errorsElement } = this;
+    element.appendChild(textInput.element);
+    element.appendChild(errorsElement);
+    errorsElement.classList.add("neuroglancer-tool-palette-query-errors");
+  }
+
+  private updateErrors() {
+    const { errorsElement } = this;
+    removeChildren(errorsElement);
+    const query = this.state.parsedQuery.value;
+    if (query === undefined || !("errors" in query)) return;
+    for (const error of query.errors) {
+      const item = document.createElement("li");
+      item.textContent = error.message;
+      errorsElement.appendChild(item);
+    }
+  }
+
+  private async completeQuery({ value }: { value: string; }): Promise<CompletionResult> {
+    const parsed = parsePartialToolQuery(value);
+    const info = getQueryTermToComplete(parsed);
+    const matches = getMatchingTools(this.state.viewer.globalToolBinder, info.completionQuery);
+
+    let completions: [string, number][];
+    if (info.property === undefined) {
+      completions = getPropertyNameCompletions(info.completionQuery, matches, info.prefix);
+    } else {
+      completions = getPropertyValueCompletions(matches, info.property);
+    }
+    const completionEntries: CompletionWithDescription[] = [];
+    if (info.property === undefined && info.prefix === "") {
+      if (parsed.query.clauses.length > 0 &&
+          parsed.query.clauses[parsed.query.clauses.length - 1].terms.length !== 0) {
+        completionEntries.push({ value: "+", description: "New inclusion clause" });
+        completionEntries.push({ value: "-", description: "New exclusion clause" });
+      }
+    }
+    for (const [v, count] of completions) {
+      completionEntries.push({ value: v, description: `${count} tool${count > 0 ? "s" : ""}` });
+    }
+    return {
+      offset: info.offset,
+      completions: completionEntries,
+      makeElement: makeCompletionElementWithDescription,
+    };
+  }
+}
 import svg_search from "ikonate/icons/search.svg?raw";
 import svg_tool from "ikonate/icons/tool.svg?raw";
 import { debounce } from "lodash-es";
@@ -97,6 +167,9 @@ import {
   makeCompletionElementWithDescription,
 } from "#src/widget/multiline_autocomplete.js";
 import { TextInputWidget } from "#src/widget/text_input.js";
+
+// 🔽 NEW: import your filter panel
+import { MeshStatsFilterPanel } from "#src/ui/mesh_stats_filter_panel.js";
 
 const DEFAULT_TOOL_PALETTE_PANEL_LOCATION: SidePanelLocation = {
   ...DEFAULT_SIDE_PANEL_LOCATION,
@@ -846,104 +919,7 @@ export class ToolPalettePanel extends SidePanel {
   disposed() {}
 }
 
-class ToolQueryWidget extends RefCounted {
-  element = document.createElement("div");
-  errorsElement = document.createElement("ul");
-  constructor(public state: ToolPaletteState) {
-    super();
-
-    const textInput = this.registerDisposer(
-      new AutocompleteTextInput({
-        completer: this.completeQuery.bind(this),
-      }),
-    );
-    textInput.placeholder = "Enter tool query or drag in tools";
-    textInput.element.classList.add("neuroglancer-tool-palette-query");
-    textInput.value = state.query.value ?? "";
-
-    this.registerDisposer(
-      state.parsedQuery.changed.add(
-        this.registerCancellable(debounce(() => this.updateErrors(), 200)),
-      ),
-    );
-    this.updateErrors();
-    textInput.onCommit.add(() => {
-      state.query.value = textInput.value;
-    });
-    state.query.changed.add(() => {
-      textInput.value = state.query.value ?? "";
-    });
-    const { element, errorsElement } = this;
-    element.appendChild(textInput.element);
-    element.appendChild(errorsElement);
-    errorsElement.classList.add("neuroglancer-tool-palette-query-errors");
-  }
-
-  private updateErrors() {
-    const { errorsElement } = this;
-    removeChildren(errorsElement);
-    const query = this.state.parsedQuery.value;
-    if (query === undefined || !("errors" in query)) return;
-    for (const error of query.errors) {
-      const element = document.createElement("li");
-      element.textContent = error.message;
-      errorsElement.appendChild(element);
-    }
-  }
-
-  private async completeQuery({
-    value,
-  }: {
-    value: string;
-  }): Promise<CompletionResult> {
-    const parsed = parsePartialToolQuery(value);
-    const info = getQueryTermToComplete(parsed);
-
-    const matches = getMatchingTools(
-      this.state.viewer.globalToolBinder,
-      info.completionQuery,
-    );
-
-    let completions: [string, number][];
-    if (info.property === undefined) {
-      completions = getPropertyNameCompletions(
-        info.completionQuery,
-        matches,
-        info.prefix,
-      );
-    } else {
-      completions = getPropertyValueCompletions(matches, info.property);
-    }
-    const completionEntries: CompletionWithDescription[] = [];
-    if (info.property === undefined && info.prefix === "") {
-      if (
-        parsed.query.clauses.length > 0 &&
-        parsed.query.clauses[parsed.query.clauses.length - 1].terms.length !== 0
-      ) {
-        completionEntries.push({
-          value: "+",
-          description: "New inclusion clause",
-        });
-        completionEntries.push({
-          value: "-",
-          description: "New exclusion clause",
-        });
-      }
-    }
-
-    for (const [value, count] of completions) {
-      completionEntries.push({
-        value,
-        description: `${count} tool${count > 0 ? "s" : ""}`,
-      });
-    }
-    return {
-      offset: info.offset,
-      completions: completionEntries,
-      makeElement: makeCompletionElementWithDescription,
-    };
-  }
-}
+export class ToolPaletteStateManager extends RefCounted {}
 
 export class MultiToolPaletteState implements Trackable {
   changed = new NullarySignal();
@@ -1064,6 +1040,10 @@ export class MultiToolPaletteState implements Trackable {
 
 export class MultiToolPaletteManager extends RefCounted {
   private panels = new Map<ToolPaletteState, RegisteredSidePanel>();
+
+  // 🔽 NEW: keep handle so we can unregister on dispose
+  private meshStatsPanelReg?: RegisteredSidePanel;
+
   constructor(
     private sidePanelManager: SidePanelManager,
     public state: MultiToolPaletteState,
@@ -1074,13 +1054,15 @@ export class MultiToolPaletteManager extends RefCounted {
     );
     this.registerDisposer(this.state.changedShallow.add(debouncedUpdatePanels));
     this.updatePanels();
+
+    // Add canned "Shader controls" palette on first multi-channel setup
     this.registerDisposer(
       this.sidePanelManager.display.multiChannelSetupFinished.add(() => {
-        // Check for the canned shader control palette
         const shaderControlPalette = CANNED_PALETTES[2];
         const existingPalettes = this.state.palettes;
         for (const palette of existingPalettes) {
           if (palette.query.value === shaderControlPalette.query) {
+            // already present
             return;
           }
         }
@@ -1095,6 +1077,25 @@ export class MultiToolPaletteManager extends RefCounted {
         newPalette.query.value = shaderControlPalette.query;
       }),
     );
+
+// Register the Mesh Stats filter panel (right side, row 1)
+const meshLoc = new TrackableSidePanelLocation({
+  ...DEFAULT_TOOL_PALETTE_PANEL_LOCATION,
+  side: "right",
+  row: 1,
+  visible: true,
+});
+
+const reg: RegisteredSidePanel = {
+  location: meshLoc,
+  makePanel: () =>
+    new MeshStatsFilterPanel(
+      this.sidePanelManager,
+      meshLoc,            // ← only two args
+    ),
+};
+this.meshStatsPanelReg = reg;
+this.sidePanelManager.registerPanel(reg);
   }
 
   private updatePanels() {
@@ -1124,6 +1125,11 @@ export class MultiToolPaletteManager extends RefCounted {
     super.disposed();
     for (const panel of this.panels.values()) {
       this.sidePanelManager.unregisterPanel(panel);
+    }
+    // 🔽 unregister Mesh Stats panel if we added it
+    if (this.meshStatsPanelReg) {
+      this.sidePanelManager.unregisterPanel(this.meshStatsPanelReg);
+      this.meshStatsPanelReg = undefined;
     }
   }
 }
